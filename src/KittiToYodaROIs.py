@@ -15,9 +15,9 @@ def strip_ROIs(class_ID, label_list):
     for i in range(len(label_list)):
         ROI = label_list[i]
         if ROI[1] == class_ID:
-            pt1 = (int(ROI[3]),int(ROI[2]))
+            pt1 = (int(ROI[3]), int(ROI[2]))
             pt2 = (int(ROI[5]), int(ROI[4]))
-            ROIs += [(pt1,pt2)]
+            ROIs += [(pt1, pt2)]
     return ROIs
 
 def calc_IoU(boxA, boxB):
@@ -99,6 +99,23 @@ def main():
     anchors = Anchors()
 
     i = 0
+
+    train_ratio = 0.8  # Adjust this ratio based on your preference
+    num_images = len(dataset)
+    num_train = int(train_ratio * num_images)
+    train_output_dir = os.path.join(output_dir, 'train')
+    test_output_dir = os.path.join(output_dir, 'test')
+
+    if not os.path.exists(train_output_dir):
+        os.makedirs(train_output_dir)
+        os.makedirs(os.path.join(train_output_dir, 'image'))
+        os.makedirs(os.path.join(train_output_dir, 'label'))
+
+    if not os.path.exists(test_output_dir):
+        os.makedirs(test_output_dir)
+        os.makedirs(os.path.join(test_output_dir, 'image'))
+        os.makedirs(os.path.join(test_output_dir, 'label'))
+
     for item in enumerate(dataset):
         idx = item[0]
         image = item[1][0]
@@ -112,6 +129,25 @@ def main():
             # print(ROIs[idx])
 
         anchor_centers = anchors.calc_anchor_centers(image.shape, anchors.grid)
+
+        if not car_ROIs:
+            # No cars in this image, add a 'NoCar' label
+            filename = str(i) + '.png'
+            image_path = os.path.join(test_output_dir, 'image', filename)
+            label_path = os.path.join(test_output_dir, 'label', filename.replace('.png', '.txt'))
+            if save_ROIs:
+                cv2.imwrite(image_path, image)
+                labels.append([filename, 0, 'NoCar'])
+                # This is saving to the label file
+                with open(label_path, 'w') as label_file:
+                    label_file.write(f'0 NoCar\n')
+            continue  # Skip the rest of the loop for images without cars
+
+        if i < num_train:
+            output_dir = train_output_dir
+        else:
+            output_dir = test_output_dir
+
         if show_images:
             image1 = image.copy()
             for j in range(len(anchor_centers)):
@@ -141,21 +177,35 @@ def main():
 
         # print(ROI_IoUs)
 
-        
         for k in range(len(boxes)):
             filename = str(i) + '_' + str(k) + '.png'
-            if save_ROIs == True:
-                cv2.imwrite(os.path.join(output_dir,filename), ROIs[k])
+            image_path = os.path.join(output_dir, 'image', filename)
+            label_path = os.path.join(output_dir, 'label', filename.replace('.png', '.txt'))
+            if save_ROIs:
+                cv2.imwrite(image_path, ROIs[k])
             name_class = 0
             name = 'NoCar'
             if ROI_IoUs[k] >= IoU_threshold:
                 name_class = 1
                 name = 'Car'
-            labels += [[filename, name_class, name]]
+            labels.append([filename, name_class, name])
+            # This is saving to the label file
+            with open(label_path, 'w') as label_file:
+                label_file.write(f'{name_class} {name}\n')
 
 
         if show_images:
             cv2.imshow('image', image1)
+            i += 1
+            print(i)
+
+            if max_ROIs > 0 and i >= max_ROIs:
+                break
+
+            print(f'Processed {i + 1} images')
+
+            if max_ROIs > 0 and i >= max_ROIs:
+                break
         # key = cv2.waitKey(0)
         # if key == ord('x'):
         #     break
@@ -241,14 +291,39 @@ def main():
     #
     # print(labels)
     #
-    if save_ROIs == True:
-        with open(os.path.join(output_dir, label_file), 'w') as f:
-            for k in range(len(labels)):
-                filename = labels[k][0]
-                name_class = str(labels[k][1])
-                name = labels[k][2]
-                f.write(filename + ' ' + name_class + ' ' + name + '\n')
-        f.close()
+    if save_ROIs:
+        if training:
+            image_path = os.path.join(train_output_dir, 'image', filename)
+            label_path = os.path.join(train_output_dir, 'label', filename.replace('.png', '.txt'))
+        else:
+            image_path = os.path.join(test_output_dir, 'image', filename)
+            label_path = os.path.join(test_output_dir, 'label', filename.replace('.png', '.txt'))
+
+        cv2.imwrite(image_path, ROIs[k])
+
+        name_class = 0
+        name = 'NoCar'
+        if save_ROIs:
+            if training:
+                image_path = os.path.join(train_output_dir, 'image', filename)
+                label_path = os.path.join(train_output_dir, 'label', filename.replace('.png', '.txt'))
+            else:
+                image_path = os.path.join(test_output_dir, 'image', filename)
+                label_path = os.path.join(test_output_dir, 'label', filename.replace('.png', '.txt'))
+
+            cv2.imwrite(image_path, ROIs[k])
+
+            name_class = 0
+            name = 'NoCar'
+            if ROI_IoUs[k] >= IoU_threshold:
+                name_class = 1
+                name = 'Car'
+                labels.append([filename, name_class, name])
+
+                with open(label_path, 'w') as f:  # Move the with block here
+                    f.write(f'{name_class} {name}\n')
+
+                f.close()
 
 
 ###################################################################
